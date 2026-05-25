@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>活動資料產生器</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0e12;
+      --surface: #16161c;
+      --surface2: #1d1d25;
+      --border: #2a2a38;
+      --text: #e4e4f0;
+      --muted: #5a5a78;
+      --accent: #7c6af5;
+      --accent-hover: #9080ff;
+      --accent-dim: rgba(124,106,245,0.12);
+      --green: #4ecb71;
+      --red: #f06060;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 32px 24px 80px;
+    }
+
+    .header { margin-bottom: 28px; }
+    .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .header p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .card-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+    }
+
+    input[type="password"],
+    input[type="text"],
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 13px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus { border-color: var(--accent); }
+    textarea { resize: vertical; line-height: 1.6; }
+
+    .parse-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.35; cursor: default; transform: none; }
+
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+    .btn-ghost {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover:not(:disabled) { background: #252530; }
+
+    .btn-del {
+      background: transparent;
+      color: var(--muted);
+      padding: 5px 9px;
+      font-size: 16px;
+      border-radius: 6px;
+    }
+    .btn-del:hover { background: rgba(240,96,96,0.12); color: var(--red); }
+
+    .status {
+      font-size: 13px;
+      padding: 2px 0;
+      flex: 1;
+    }
+    .status-loading { color: var(--accent); }
+    .status-error   { color: var(--red); }
+    .status-success { color: var(--green); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.55s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* result section header */
+    .result-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* table */
+    .table-scroll {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 100%;
+      font-size: 13px;
+    }
+
+    thead th {
+      background: #111118;
+      padding: 9px 12px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tbody tr { border-bottom: 1px solid var(--border); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--accent-dim); }
+
+    tbody td { padding: 0; vertical-align: middle; }
+
+    td.cell-del { padding: 0 4px; width: 36px; }
+
+    td input[type="text"] {
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      padding: 8px 11px;
+      font-size: 13px;
+      min-width: 90px;
+      transition: background 0.1s;
+    }
+    td input[type="text"]:focus {
+      background: rgba(124,106,245,0.08);
+    }
+
+    td.col-title   input { min-width: 220px; }
+    td.col-loc     input { min-width: 160px; }
+    td.col-org     input { min-width: 130px; }
+    td.col-url     input { min-width: 155px; }
+    td.col-region  input { min-width: 55px;  }
+    td.col-tz      input { min-width: 120px; }
+    td.col-date    input { min-width: 105px; }
+    td.col-time    input { min-width: 70px;  }
+    td.col-cat     input { min-width: 100px; }
+
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      padding: 44px 20px;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    .empty-state span { display: block; font-size: 28px; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>活動資料產生器</h1>
+  <p>貼上活動文字，自動解析欄位並填入表格</p>
+</div>
+
+<!-- API Key -->
+<div class="card">
+  <div class="card-label">Anthropic API Key</div>
+  <input type="password" id="apiKey" placeholder="sk-ant-api03-…" autocomplete="off" />
+</div>
+
+<!-- Input -->
+<div class="card">
+  <div class="card-label">活動資訊文字</div>
+  <textarea id="inputText" rows="9"
+    placeholder="貼上活動公告、票務頁面文字、演唱會介紹等，可包含多個活動，系統會一次全部解析…"></textarea>
+  <div class="parse-row">
+    <button class="btn-primary" id="parseBtn" onclick="parseText()">
+      <span id="parseBtnContent">✦ 解析欄位</span>
+    </button>
+    <button class="btn-ghost" onclick="clearAll()">清除全部</button>
+    <span id="status" class="status"></span>
+  </div>
+</div>
+
+<!-- Result -->
+<div class="card">
+  <div class="result-header">
+    <div class="card-label" style="margin-bottom:0">解析結果</div>
+    <div class="result-actions">
+      <button class="btn-ghost" onclick="addRow()">+ 新增一列</button>
+      <button class="btn-ghost" onclick="copyTSV()">複製 → 貼到試算表</button>
+      <button class="btn-ghost" onclick="copyCSV()">複製 CSV</button>
+    </div>
+  </div>
+
+  <div class="table-scroll">
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th></th>
+          <th>title</th>
+          <th>region</th>
+          <th>location</th>
+          <th>organizer</th>
+          <th>start_date</th>
+          <th>end_date</th>
+          <th>timezone</th>
+          <th>event_time</th>
+          <th>website_url</th>
+          <th>twitter_url</th>
+          <th>facebook_url</th>
+          <th>instagram_url</th>
+          <th>bluesky_url</th>
+          <th>category_type</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody">
+        <tr>
+          <td colspan="15">
+            <div class="empty-state">
+              <span>📋</span>
+              貼上活動文字後按「解析欄位」<br>結果會顯示在這裡，每格可直接編輯
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const COLS = [
+  ['title',        'col-title'],
+  ['region',       'col-region'],
+  ['location',     'col-loc'],
+  ['organizer',    'col-org'],
+  ['start_date',   'col-date'],
+  ['end_date',     'col-date'],
+  ['timezone',     'col-tz'],
+  ['event_time',   'col-time'],
+  ['website_url',  'col-url'],
+  ['twitter_url',  'col-url'],
+  ['facebook_url', 'col-url'],
+  ['instagram_url','col-url'],
+  ['bluesky_url',  'col-url'],
+  ['category_type','col-cat'],
+];
+
+let rows = [];
+
+// Persist API key
+const apiKeyEl = document.getElementById('apiKey');
+apiKeyEl.value = localStorage.getItem('ant_key') || '';
+apiKeyEl.addEventListener('input', () => localStorage.setItem('ant_key', apiKeyEl.value.trim()));
+
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status' + (type ? ' status-' + type : '');
+}
+
+function setBtnLoading(loading) {
+  const btn = document.getElementById('parseBtn');
+  const content = document.getElementById('parseBtnContent');
+  btn.disabled = loading;
+  if (loading) {
+    content.innerHTML = '<span class="spinner"></span> 解析中…';
+  } else {
+    content.innerHTML = '✦ 解析欄位';
+  }
+}
+
+async function parseText() {
+  const apiKey = apiKeyEl.value.trim();
+  const text = document.getElementById('inputText').value.trim();
+  if (!apiKey) { setStatus('請先填入 Anthropic API Key', 'error'); return; }
+  if (!text)   { setStatus('請貼上活動資訊文字', 'error'); return; }
+
+  setBtnLoading(true);
+  setStatus('解析中…', 'loading');
+
+  const system = `你是活動資料解析器，從文字中提取活動資訊並回傳 JSON。
+
+欄位定義：
+- title: 活動完整名稱
+- region: 地區代碼（tw 台灣、hk 香港、sg 新加坡、jp 日本、kr 韓國、my 馬來西亞、us 美國、other）
+- location: 場地名稱（不含城市/地址）
+- organizer: 主辦或售票單位
+- start_date: YYYY-MM-DD
+- end_date: YYYY-MM-DD（單日活動與 start_date 相同）
+- timezone: IANA 時區（如 Asia/Taipei、Asia/Hong_Kong、Asia/Tokyo、Asia/Seoul）
+- event_time: 開演時間 HH:MM（24h，無法判斷留空）
+- website_url: 官網或售票連結
+- twitter_url: Twitter/X 頁面 URL
+- facebook_url: Facebook 頁面 URL
+- instagram_url: Instagram 帳號 URL
+- bluesky_url: Bluesky 帳號 URL
+- category_type: concert / live / fanmeeting / exhibition / festival / other（無法判斷留空）
+
+規則：
+1. 若一個活動有多天（Day1、Day2 等），每天獨立一列，日期各自填入
+2. 無法判斷的欄位填空字串 ""
+3. 只回傳 JSON，不要加說明文字
+
+{"events":[{"title":"","region":"","location":"","organizer":"","start_date":"","end_date":"","timezone":"","event_time":"","website_url":"","twitter_url":"","facebook_url":"","instagram_url":"","bluesky_url":"","category_type":""}]}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-allow-browser': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        system,
+        messages: [{ role: 'user', content: text }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const raw = data.content?.[0]?.text?.trim() || '';
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('回傳格式有誤，無法解析 JSON');
+
+    const parsed = JSON.parse(match[0]);
+    const events = Array.isArray(parsed.events) ? parsed.events : [];
+
+    if (events.length === 0) {
+      setStatus('未能從文字中解析出活動資料', 'error');
+    } else {
+      rows = [...rows, ...events];
+      renderTable();
+      setStatus(`✓ 解析完成，共 ${events.length} 筆`, 'success');
+    }
+  } catch (e) {
+    setStatus('錯誤：' + e.message, 'error');
+    console.error(e);
+  } finally {
+    setBtnLoading(false);
+  }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tableBody');
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state"><span>📋</span>貼上活動文字後按「解析欄位」<br>結果會顯示在這裡，每格可直接編輯</div></td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((row, i) => `
+    <tr>
+      <td class="cell-del">
+        <button class="btn-del" onclick="deleteRow(${i})" title="刪除此列">×</button>
+      </td>
+      ${COLS.map(([col, cls]) => `
+        <td class="${cls}">
+          <input type="text"
+            value="${esc(row[col] || '')}"
+            placeholder="${col}"
+            oninput="rows[${i}]['${col}']=this.value"
+          />
+        </td>
+      `).join('')}
+    </tr>
+  `).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function deleteRow(i) {
+  rows.splice(i, 1);
+  renderTable();
+  if (rows.length === 0) setStatus('');
+}
+
+function addRow() {
+  const empty = {};
+  COLS.forEach(([c]) => empty[c] = '');
+  rows.push(empty);
+  renderTable();
+  const tbody = document.getElementById('tableBody');
+  const newRow = tbody.lastElementChild;
+  newRow?.querySelector('input')?.focus();
+}
+
+function clearAll() {
+  if (rows.length === 0 && !document.getElementById('inputText').value) return;
+  if (rows.length > 0 && !confirm('確定清除所有資料？')) return;
+  rows = [];
+  document.getElementById('inputText').value = '';
+  renderTable();
+  setStatus('');
+}
+
+function copyTSV() {
+  if (rows.length === 0) { setStatus('目前沒有資料', 'error'); return; }
+  const lines = rows.map(r => COLS.map(([c]) => (r[c] || '').replace(/\t/g,' ')).join('\t'));
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => setStatus('✓ 已複製！直接貼到 Google 試算表即可', 'success'))
+    .catch(() => setStatus('複製失敗，請手動複製', 'error'));
+}
+
+function copyCSV() {
+  if (rows.length === 0) { setStatus('目前沒有資料', 'error'); return; }
+  const header = COLS.map(([c]) => c).join(',');
+  const body = rows.map(r => COLS.map(([c]) => `"${(r[c]||'').replace(/"/g,'""')}"`).join(','));
+  navigator.clipboard.writeText([header, ...body].join('\n'))
+    .then(() => setStatus('✓ CSV 已複製', 'success'))
+    .catch(() => setStatus('複製失敗', 'error'));
+}
+</script>
+
+</body>
+</html>
