@@ -218,9 +218,15 @@
     td input[type="text"]:focus { background: rgba(124,106,245,0.08); }
 
     td.col-title    input { min-width: 220px; }
-    td.col-date     input { min-width: 130px; }
+    td.col-region   input { min-width: 100px; }
     td.col-loc      input { min-width: 180px; }
+    td.col-city     input { min-width: 100px; }
     td.col-org      input { min-width: 150px; }
+    td.col-date     input { min-width: 120px; }
+    td.col-tz       input { min-width: 130px; }
+    td.col-time     input { min-width: 130px; }
+    td.col-url      input { min-width: 200px; }
+    td.col-img      input { min-width: 200px; }
 
     .empty-state {
       text-align: center;
@@ -302,18 +308,10 @@
 
   <div class="table-scroll">
     <table id="resultTable">
-      <thead>
-        <tr>
-          <th></th>
-          <th>活動名稱</th>
-          <th>日期</th>
-          <th>地點</th>
-          <th>主辦單位</th>
-        </tr>
-      </thead>
+      <thead><tr></tr></thead>
       <tbody id="tableBody">
         <tr>
-          <td colspan="5">
+          <td colspan="18">
             <div class="empty-state">
               <span>📋</span>
               貼上活動文字或網址後按「解析活動」<br>結果顯示在這裡，每格可直接編輯
@@ -327,10 +325,23 @@
 
 <script>
 const COLS = [
-  ['title',     'col-title', '活動名稱'],
-  ['date',      'col-date',  '日期'],
-  ['location',  'col-loc',   '地點'],
-  ['organizer', 'col-org',   '主辦單位'],
+  ['title',         'col-title',  '活動名稱'],
+  ['region',        'col-region', '地區'],
+  ['location',      'col-loc',    '地點'],
+  ['city',          'col-city',   '城市'],
+  ['organizer',     'col-org',    '主辦單位'],
+  ['start_date',    'col-date',   '開始日期'],
+  ['end_date',      'col-date',   '結束日期'],
+  ['timezone',      'col-tz',     '時區'],
+  ['event_time',    'col-time',   '活動時間'],
+  ['website_url',   'col-url',    '官網'],
+  ['twitter_url',   'col-url',    'Twitter'],
+  ['facebook_url',  'col-url',    'Facebook'],
+  ['instagram_url', 'col-url',    'Instagram'],
+  ['bluesky_url',   'col-url',    'Bluesky'],
+  ['img',           'col-img',    '圖片'],
+  ['threads',       'col-url',    'Threads'],
+  ['threads_loc',   'col-url',    'Threads 地點'],
 ];
 
 let rows = [];
@@ -409,16 +420,29 @@ async function parseText(text) {
 
 欄位定義：
 - title: 活動完整名稱
-- date: 活動日期，格式 YYYY-MM-DD，若有多天請用「YYYY-MM-DD～YYYY-MM-DD」
-- location: 活動地點（場地名稱或城市）
+- region: 地區（如：台灣、日本、亞洲等大範圍區域）
+- location: 活動地點（場地名稱）
+- city: 城市（如：台北、東京、首爾）
 - organizer: 主辦單位或主辦品牌
+- start_date: 開始日期，格式 YYYY-MM-DD
+- end_date: 結束日期，格式 YYYY-MM-DD（單日活動與 start_date 相同）
+- timezone: 時區（如：Asia/Taipei、Asia/Tokyo）
+- event_time: 活動時間（如：19:00、14:00-17:00）
+- website_url: 官方網站網址
+- twitter_url: Twitter/X 帳號或活動頁網址
+- facebook_url: Facebook 粉絲頁或活動頁網址
+- instagram_url: Instagram 帳號或活動頁網址
+- bluesky_url: Bluesky 帳號或活動頁網址
+- img: 活動主視覺圖片網址
+- threads: Threads 帳號或活動頁網址
+- threads_loc: Threads 地點標記
 
 規則：
 1. 若文字包含多個活動，每個活動獨立一筆
 2. 無法判斷的欄位填空字串 ""
 3. 只回傳 JSON，不加說明文字
 
-格式：{"events":[{"title":"","date":"","location":"","organizer":""}]}`;
+格式：{"events":[{"title":"","region":"","location":"","city":"","organizer":"","start_date":"","end_date":"","timezone":"","event_time":"","website_url":"","twitter_url":"","facebook_url":"","instagram_url":"","bluesky_url":"","img":"","threads":"","threads_loc":""}]}`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -470,7 +494,7 @@ function renderTable() {
 
   if (rows.length === 0) {
     badge.style.display = 'none';
-    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span>📋</span>貼上活動文字或網址後按「解析活動」<br>結果顯示在這裡，每格可直接編輯</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${COLS.length + 1}"><div class="empty-state"><span>📋</span>貼上活動文字或網址後按「解析活動」<br>結果顯示在這裡，每格可直接編輯</div></td></tr>`;
     return;
   }
 
@@ -548,8 +572,25 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-  // column widths
-  ws['!cols'] = [{ wch: 40 }, { wch: 18 }, { wch: 25 }, { wch: 22 }];
+  ws['!cols'] = [
+    { wch: 40 }, // title
+    { wch: 12 }, // region
+    { wch: 25 }, // location
+    { wch: 12 }, // city
+    { wch: 22 }, // organizer
+    { wch: 14 }, // start_date
+    { wch: 14 }, // end_date
+    { wch: 16 }, // timezone
+    { wch: 16 }, // event_time
+    { wch: 35 }, // website_url
+    { wch: 35 }, // twitter_url
+    { wch: 35 }, // facebook_url
+    { wch: 35 }, // instagram_url
+    { wch: 35 }, // bluesky_url
+    { wch: 35 }, // img
+    { wch: 35 }, // threads
+    { wch: 25 }, // threads_loc
+  ];
 
   XLSX.utils.book_append_sheet(wb, ws, '活動資料');
 
@@ -557,6 +598,10 @@ function exportExcel() {
   XLSX.writeFile(wb, `活動資料_${date}.xlsx`);
   setStatus('✓ Excel 已下載', 'success');
 }
+
+// init table header
+document.querySelector('#resultTable thead tr').innerHTML =
+  '<th></th>' + COLS.map(([,, label]) => `<th>${label}</th>`).join('');
 </script>
 
 </body>
