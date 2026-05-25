@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>活動資料產生器</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -27,11 +28,13 @@
       color: var(--text);
       min-height: 100vh;
       padding: 32px 24px 80px;
+      max-width: 960px;
+      margin: 0 auto;
     }
 
     .header { margin-bottom: 28px; }
     .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
-    .header p { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .header p  { color: var(--muted); font-size: 13px; margin-top: 4px; }
 
     .card {
       background: var(--surface);
@@ -52,6 +55,7 @@
 
     input[type="password"],
     input[type="text"],
+    input[type="url"],
     textarea {
       width: 100%;
       background: var(--bg);
@@ -66,6 +70,30 @@
     }
     input:focus, textarea:focus { border-color: var(--accent); }
     textarea { resize: vertical; line-height: 1.6; }
+
+    /* tabs */
+    .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+    .tab {
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid transparent;
+      color: var(--muted);
+      background: transparent;
+      transition: all 0.15s;
+    }
+    .tab.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    .url-row { display: flex; gap: 8px; }
+    .url-row input { flex: 1; }
 
     .parse-row {
       display: flex;
@@ -94,6 +122,9 @@
 
     .btn-primary { background: var(--accent); color: #fff; }
     .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+    .btn-green { background: #1e4d30; color: var(--green); border: 1px solid #2a6b40; }
+    .btn-green:hover:not(:disabled) { background: #265e3a; }
 
     .btn-ghost {
       background: var(--surface2);
@@ -130,7 +161,6 @@
       flex-shrink: 0;
     }
 
-    /* result section header */
     .result-header {
       display: flex;
       align-items: center;
@@ -141,7 +171,6 @@
     }
     .result-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-    /* table */
     .table-scroll {
       overflow-x: auto;
       border-radius: 10px;
@@ -175,7 +204,6 @@
     tbody tr:hover { background: var(--accent-dim); }
 
     tbody td { padding: 0; vertical-align: middle; }
-
     td.cell-del { padding: 0 4px; width: 36px; }
 
     td input[type="text"] {
@@ -187,19 +215,12 @@
       min-width: 90px;
       transition: background 0.1s;
     }
-    td input[type="text"]:focus {
-      background: rgba(124,106,245,0.08);
-    }
+    td input[type="text"]:focus { background: rgba(124,106,245,0.08); }
 
-    td.col-title   input { min-width: 220px; }
-    td.col-loc     input { min-width: 160px; }
-    td.col-org     input { min-width: 130px; }
-    td.col-url     input { min-width: 155px; }
-    td.col-region  input { min-width: 55px;  }
-    td.col-tz      input { min-width: 120px; }
-    td.col-date    input { min-width: 105px; }
-    td.col-time    input { min-width: 70px;  }
-    td.col-cat     input { min-width: 100px; }
+    td.col-title    input { min-width: 220px; }
+    td.col-date     input { min-width: 130px; }
+    td.col-loc      input { min-width: 180px; }
+    td.col-org      input { min-width: 150px; }
 
     .empty-state {
       text-align: center;
@@ -209,13 +230,22 @@
       line-height: 1.8;
     }
     .empty-state span { display: block; font-size: 28px; margin-bottom: 8px; }
+
+    .count-badge {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
 
 <div class="header">
   <h1>活動資料產生器</h1>
-  <p>貼上活動文字，自動解析欄位並填入表格</p>
+  <p>貼上活動文字或網址，自動解析並匯出 Excel</p>
 </div>
 
 <!-- API Key -->
@@ -226,12 +256,30 @@
 
 <!-- Input -->
 <div class="card">
-  <div class="card-label">活動資訊文字</div>
-  <textarea id="inputText" rows="9"
-    placeholder="貼上活動公告、票務頁面文字、演唱會介紹等，可包含多個活動，系統會一次全部解析…"></textarea>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('text')">📝 貼上文字</button>
+    <button class="tab" onclick="switchTab('url')">🔗 貼上網址</button>
+  </div>
+
+  <!-- Text tab -->
+  <div class="tab-panel active" id="panel-text">
+    <textarea id="inputText" rows="8"
+      placeholder="貼上活動公告、票務頁面文字、演唱會介紹等，可包含多個活動…"></textarea>
+  </div>
+
+  <!-- URL tab -->
+  <div class="tab-panel" id="panel-url">
+    <div class="url-row">
+      <input type="url" id="inputUrl" placeholder="https://example.com/event" />
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:8px;">
+      ⚠️ 部分網站因安全設定無法直接擷取，若失敗請切換到「貼上文字」手動貼入內容。
+    </p>
+  </div>
+
   <div class="parse-row">
-    <button class="btn-primary" id="parseBtn" onclick="parseText()">
-      <span id="parseBtnContent">✦ 解析欄位</span>
+    <button class="btn-primary" id="parseBtn" onclick="handleParse()">
+      <span id="parseBtnContent">✦ 解析活動</span>
     </button>
     <button class="btn-ghost" onclick="clearAll()">清除全部</button>
     <span id="status" class="status"></span>
@@ -241,11 +289,14 @@
 <!-- Result -->
 <div class="card">
   <div class="result-header">
-    <div class="card-label" style="margin-bottom:0">解析結果</div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="card-label" style="margin-bottom:0">解析結果</div>
+      <span id="rowCount" class="count-badge" style="display:none">0 筆</span>
+    </div>
     <div class="result-actions">
-      <button class="btn-ghost" onclick="addRow()">+ 新增一列</button>
-      <button class="btn-ghost" onclick="copyTSV()">複製 → 貼到試算表</button>
-      <button class="btn-ghost" onclick="copyCSV()">複製 CSV</button>
+      <button class="btn-ghost" onclick="addRow()">＋ 新增一列</button>
+      <button class="btn-ghost" onclick="copyTSV()">複製 → 試算表</button>
+      <button class="btn-green" onclick="exportExcel()">⬇ 下載 Excel</button>
     </div>
   </div>
 
@@ -254,28 +305,18 @@
       <thead>
         <tr>
           <th></th>
-          <th>title</th>
-          <th>region</th>
-          <th>location</th>
-          <th>organizer</th>
-          <th>start_date</th>
-          <th>end_date</th>
-          <th>timezone</th>
-          <th>event_time</th>
-          <th>website_url</th>
-          <th>twitter_url</th>
-          <th>facebook_url</th>
-          <th>instagram_url</th>
-          <th>bluesky_url</th>
-          <th>category_type</th>
+          <th>活動名稱</th>
+          <th>日期</th>
+          <th>地點</th>
+          <th>主辦單位</th>
         </tr>
       </thead>
       <tbody id="tableBody">
         <tr>
-          <td colspan="15">
+          <td colspan="5">
             <div class="empty-state">
               <span>📋</span>
-              貼上活動文字後按「解析欄位」<br>結果會顯示在這裡，每格可直接編輯
+              貼上活動文字或網址後按「解析活動」<br>結果顯示在這裡，每格可直接編輯
             </div>
           </td>
         </tr>
@@ -286,28 +327,27 @@
 
 <script>
 const COLS = [
-  ['title',        'col-title'],
-  ['region',       'col-region'],
-  ['location',     'col-loc'],
-  ['organizer',    'col-org'],
-  ['start_date',   'col-date'],
-  ['end_date',     'col-date'],
-  ['timezone',     'col-tz'],
-  ['event_time',   'col-time'],
-  ['website_url',  'col-url'],
-  ['twitter_url',  'col-url'],
-  ['facebook_url', 'col-url'],
-  ['instagram_url','col-url'],
-  ['bluesky_url',  'col-url'],
-  ['category_type','col-cat'],
+  ['title',     'col-title', '活動名稱'],
+  ['date',      'col-date',  '日期'],
+  ['location',  'col-loc',   '地點'],
+  ['organizer', 'col-org',   '主辦單位'],
 ];
 
 let rows = [];
+let activeTab = 'text';
 
-// Persist API key
 const apiKeyEl = document.getElementById('apiKey');
 apiKeyEl.value = localStorage.getItem('ant_key') || '';
 apiKeyEl.addEventListener('input', () => localStorage.setItem('ant_key', apiKeyEl.value.trim()));
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab').forEach((el, i) => {
+    el.classList.toggle('active', (i === 0 && tab === 'text') || (i === 1 && tab === 'url'));
+  });
+  document.getElementById('panel-text').classList.toggle('active', tab === 'text');
+  document.getElementById('panel-url').classList.toggle('active', tab === 'url');
+}
 
 function setStatus(msg, type = '') {
   const el = document.getElementById('status');
@@ -319,46 +359,66 @@ function setBtnLoading(loading) {
   const btn = document.getElementById('parseBtn');
   const content = document.getElementById('parseBtnContent');
   btn.disabled = loading;
-  if (loading) {
-    content.innerHTML = '<span class="spinner"></span> 解析中…';
+  content.innerHTML = loading ? '<span class="spinner"></span> 解析中…' : '✦ 解析活動';
+}
+
+async function handleParse() {
+  if (activeTab === 'url') {
+    await parseFromUrl();
   } else {
-    content.innerHTML = '✦ 解析欄位';
+    await parseText(document.getElementById('inputText').value.trim());
   }
 }
 
-async function parseText() {
-  const apiKey = apiKeyEl.value.trim();
-  const text = document.getElementById('inputText').value.trim();
-  if (!apiKey) { setStatus('請先填入 Anthropic API Key', 'error'); return; }
-  if (!text)   { setStatus('請貼上活動資訊文字', 'error'); return; }
+async function parseFromUrl() {
+  const url = document.getElementById('inputUrl').value.trim();
+  if (!url) { setStatus('請輸入活動網址', 'error'); return; }
 
   setBtnLoading(true);
-  setStatus('解析中…', 'loading');
+  setStatus('擷取頁面中…', 'loading');
+
+  try {
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetch(proxyUrl);
+    if (!res.ok) throw new Error('無法擷取頁面');
+    const data = await res.json();
+    const html = data.contents || '';
+
+    // strip tags, keep text
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    const text = div.innerText || div.textContent || '';
+    if (!text.trim()) throw new Error('頁面內容為空');
+
+    await parseText(text.substring(0, 8000));
+  } catch (e) {
+    setStatus('擷取失敗：' + e.message + '，請改用「貼上文字」', 'error');
+    setBtnLoading(false);
+  }
+}
+
+async function parseText(text) {
+  const apiKey = apiKeyEl.value.trim();
+  if (!apiKey) { setStatus('請先填入 Anthropic API Key', 'error'); setBtnLoading(false); return; }
+  if (!text)   { setStatus('請貼上活動資訊文字', 'error'); setBtnLoading(false); return; }
+
+  setBtnLoading(true);
+  setStatus('AI 解析中…', 'loading');
 
   const system = `你是活動資料解析器，從文字中提取活動資訊並回傳 JSON。
 
 欄位定義：
 - title: 活動完整名稱
-- region: 地區代碼（tw 台灣、hk 香港、sg 新加坡、jp 日本、kr 韓國、my 馬來西亞、us 美國、other）
-- location: 場地名稱（不含城市/地址）
-- organizer: 主辦或售票單位
-- start_date: YYYY-MM-DD
-- end_date: YYYY-MM-DD（單日活動與 start_date 相同）
-- timezone: IANA 時區（如 Asia/Taipei、Asia/Hong_Kong、Asia/Tokyo、Asia/Seoul）
-- event_time: 開演時間 HH:MM（24h，無法判斷留空）
-- website_url: 官網或售票連結
-- twitter_url: Twitter/X 頁面 URL
-- facebook_url: Facebook 頁面 URL
-- instagram_url: Instagram 帳號 URL
-- bluesky_url: Bluesky 帳號 URL
-- category_type: concert / live / fanmeeting / exhibition / festival / other（無法判斷留空）
+- date: 活動日期，格式 YYYY-MM-DD，若有多天請用「YYYY-MM-DD～YYYY-MM-DD」
+- location: 活動地點（場地名稱或城市）
+- organizer: 主辦單位或主辦品牌
 
 規則：
-1. 若一個活動有多天（Day1、Day2 等），每天獨立一列，日期各自填入
+1. 若文字包含多個活動，每個活動獨立一筆
 2. 無法判斷的欄位填空字串 ""
-3. 只回傳 JSON，不要加說明文字
+3. 只回傳 JSON，不加說明文字
 
-{"events":[{"title":"","region":"","location":"","organizer":"","start_date":"","end_date":"","timezone":"","event_time":"","website_url":"","twitter_url":"","facebook_url":"","instagram_url":"","bluesky_url":"","category_type":""}]}`;
+格式：{"events":[{"title":"","date":"","location":"","organizer":""}]}`;
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -370,8 +430,8 @@ async function parseText() {
         'anthropic-dangerous-allow-browser': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 2048,
         system,
         messages: [{ role: 'user', content: text }]
       })
@@ -385,7 +445,7 @@ async function parseText() {
     const data = await res.json();
     const raw = data.content?.[0]?.text?.trim() || '';
     const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error('回傳格式有誤，無法解析 JSON');
+    if (!match) throw new Error('回傳格式有誤');
 
     const parsed = JSON.parse(match[0]);
     const events = Array.isArray(parsed.events) ? parsed.events : [];
@@ -399,7 +459,6 @@ async function parseText() {
     }
   } catch (e) {
     setStatus('錯誤：' + e.message, 'error');
-    console.error(e);
   } finally {
     setBtnLoading(false);
   }
@@ -407,14 +466,21 @@ async function parseText() {
 
 function renderTable() {
   const tbody = document.getElementById('tableBody');
+  const badge = document.getElementById('rowCount');
+
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="15"><div class="empty-state"><span>📋</span>貼上活動文字後按「解析欄位」<br>結果會顯示在這裡，每格可直接編輯</div></td></tr>`;
+    badge.style.display = 'none';
+    tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><span>📋</span>貼上活動文字或網址後按「解析活動」<br>結果顯示在這裡，每格可直接編輯</div></td></tr>`;
     return;
   }
+
+  badge.style.display = '';
+  badge.textContent = rows.length + ' 筆';
+
   tbody.innerHTML = rows.map((row, i) => `
     <tr>
       <td class="cell-del">
-        <button class="btn-del" onclick="deleteRow(${i})" title="刪除此列">×</button>
+        <button class="btn-del" onclick="deleteRow(${i})" title="刪除">×</button>
       </td>
       ${COLS.map(([col, cls]) => `
         <td class="${cls}">
@@ -430,7 +496,11 @@ function renderTable() {
 }
 
 function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/"/g,'&quot;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
 }
 
 function deleteRow(i) {
@@ -445,8 +515,7 @@ function addRow() {
   rows.push(empty);
   renderTable();
   const tbody = document.getElementById('tableBody');
-  const newRow = tbody.lastElementChild;
-  newRow?.querySelector('input')?.focus();
+  tbody.lastElementChild?.querySelector('input')?.focus();
 }
 
 function clearAll() {
@@ -454,25 +523,39 @@ function clearAll() {
   if (rows.length > 0 && !confirm('確定清除所有資料？')) return;
   rows = [];
   document.getElementById('inputText').value = '';
+  document.getElementById('inputUrl').value = '';
   renderTable();
   setStatus('');
 }
 
 function copyTSV() {
   if (rows.length === 0) { setStatus('目前沒有資料', 'error'); return; }
-  const lines = rows.map(r => COLS.map(([c]) => (r[c] || '').replace(/\t/g,' ')).join('\t'));
-  navigator.clipboard.writeText(lines.join('\n'))
-    .then(() => setStatus('✓ 已複製！直接貼到 Google 試算表即可', 'success'))
-    .catch(() => setStatus('複製失敗，請手動複製', 'error'));
+  const header = COLS.map(([,, label]) => label).join('\t');
+  const body = rows.map(r => COLS.map(([c]) => (r[c] || '').replace(/\t/g,' ')).join('\t'));
+  navigator.clipboard.writeText([header, ...body].join('\n'))
+    .then(() => setStatus('✓ 已複製！直接貼到 Google 試算表', 'success'))
+    .catch(() => setStatus('複製失敗', 'error'));
 }
 
-function copyCSV() {
+function exportExcel() {
   if (rows.length === 0) { setStatus('目前沒有資料', 'error'); return; }
-  const header = COLS.map(([c]) => c).join(',');
-  const body = rows.map(r => COLS.map(([c]) => `"${(r[c]||'').replace(/"/g,'""')}"`).join(','));
-  navigator.clipboard.writeText([header, ...body].join('\n'))
-    .then(() => setStatus('✓ CSV 已複製', 'success'))
-    .catch(() => setStatus('複製失敗', 'error'));
+
+  const wsData = [
+    COLS.map(([,, label]) => label),
+    ...rows.map(r => COLS.map(([c]) => r[c] || ''))
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // column widths
+  ws['!cols'] = [{ wch: 40 }, { wch: 18 }, { wch: 25 }, { wch: 22 }];
+
+  XLSX.utils.book_append_sheet(wb, ws, '活動資料');
+
+  const date = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  XLSX.writeFile(wb, `活動資料_${date}.xlsx`);
+  setStatus('✓ Excel 已下載', 'success');
 }
 </script>
 
